@@ -1,0 +1,88 @@
+name: Generate Daily Ramadan Lockscreen
+
+on:
+  # Run daily at 02:00 UK time (GMT during Ramadan 2026)
+  schedule:
+    - cron: '0 2 * * *'
+
+  # Allow manual trigger from the Actions tab
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 'Date to generate (YYYY-MM-DD), leave blank for today'
+        required: false
+      mosque:
+        description: 'Mosque (faizul / quba / all)'
+        required: false
+        default: 'all'
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install playwright Pillow
+          playwright install --with-deps chromium
+
+      - name: Determine date and mosque
+        id: params
+        run: |
+          if [ -n "${{ github.event.inputs.date }}" ]; then
+            echo "date=${{ github.event.inputs.date }}" >> $GITHUB_OUTPUT
+          else
+            echo "date=$(TZ='Europe/London' date +%Y-%m-%d)" >> $GITHUB_OUTPUT
+          fi
+          MOSQUE="${{ github.event.inputs.mosque }}"
+          echo "mosque=${MOSQUE:-all}" >> $GITHUB_OUTPUT
+
+      - name: Check if date is within Ramadan
+        id: check
+        run: |
+          DATE="${{ steps.params.outputs.date }}"
+          if [[ "$DATE" < "2026-02-18" ]] || [[ "$DATE" > "2026-03-19" ]]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "⏭️ $DATE is outside Ramadan 2026 (18 Feb – 19 Mar). Skipping."
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "✅ $DATE is within Ramadan. Generating..."
+          fi
+
+      - name: Generate lockscreen(s)
+        if: steps.check.outputs.skip == 'false'
+        env:
+          OUTPUT_DIR: ${{ github.workspace }}/output
+        run: |
+          python generate.py ${{ steps.params.outputs.mosque }} ${{ steps.params.outputs.date }}
+
+      - name: Copy to 'latest' folder for stable URLs
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          mkdir -p latest
+          for f in output/ramadan_lockscreen_*.png; do
+            slug=$(echo "$f" | sed 's/.*ramadan_lockscreen_\([a-z]*\)_.*/\1/')
+            cp "$f" "latest/ramadan_lockscreen_${slug}_latest.png"
+          done
+          echo "📁 Latest folder:"
+          ls -la latest/
+
+      - name: Commit and push
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add output/ latest/
+          git commit -m "🌙 Lockscreen for ${{ steps.params.outputs.date }}" || echo "No changes to commit"
+          git push
