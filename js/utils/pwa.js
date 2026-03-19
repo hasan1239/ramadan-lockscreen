@@ -3,9 +3,20 @@
 let deferredPrompt = null;
 
 export function registerServiceWorker() {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js');
-  }
+  if (!('serviceWorker' in navigator)) return;
+
+  navigator.serviceWorker.register('/sw.js').then(registration => {
+    // Check for updates on every page load
+    registration.update();
+  });
+
+  // When a new SW takes over (via skipWaiting), reload for fresh content
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
 }
 
 export function initInstallPrompt() {

@@ -1,4 +1,7 @@
-const CACHE_NAME = 'iqamah-v2';
+// IMPORTANT: Update this version on every deploy to bust the cache.
+// Must match the version in version.json.
+const CACHE_VERSION = '2.2.2';
+const CACHE_NAME = `iqamah-v${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
   './',
